@@ -14,13 +14,11 @@
 #include "hardware/clocks.h"
 #include "hardware/adc.h"  // adc
 
-#include "ring.h"
-
 #define AUDIO_OUT_PIN 28
 #define AUDIO_IN_PIN 27
 
 #define SAMPLE_RATE 8000
-#define DATA_LENGTH SAMPLE_RATE*2 // WAV_DATA_LENGTH //16000
+#define DATA_LENGTH SAMPLE_RATE *4// WAV_DATA_LENGTH //48000 
 #define FREQ 8000
 
 char audio[DATA_LENGTH];
@@ -41,6 +39,18 @@ int audio_pin_slice;
  * adjust by factor of 8 (this is what bitshifting <<3 is doing)
  *
  */
+
+void detect_sound() {
+    const float threshold = 2.0f;
+    while (1) {
+        float sound = ((float)adc_read() / 4095.0f) * 3.3f;
+        if (sound > threshold) {
+            printf("SOM DETECTADO\n");
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
 void pwm_interrupt_handler() {
     pwm_clear_irq(pwm_gpio_to_slice_num(AUDIO_OUT_PIN));
     if (wav_position < (DATA_LENGTH << 3) - 1) {
@@ -80,8 +90,11 @@ void sin_task() {
 
     while (1) {
     }
-}
+    }
 
+
+
+repeating_timer_t print_timer;
 
 void mic_task() {
     adc_gpio_init(AUDIO_IN_PIN);
@@ -99,7 +112,7 @@ void mic_task() {
 
     while (1) {
         wav_position = 0;
-
+        detect_sound();
         if (!add_repeating_timer_us(1000000 / timer_0_hz,
             timer_0_callback,
             NULL,
@@ -111,10 +124,6 @@ void mic_task() {
         }
 
         xSemaphoreGive(xSemaphorePlayInit);
-
-        for (int i = 0; i < DATA_LENGTH; i++) {
-            printf("%.2f\n", 3.3* (audio[i] / 255.0));
-        }
 
 
         if (xSemaphoreTake(xSemaphorePlayDone, portMAX_DELAY) == pdTRUE) {
@@ -161,10 +170,6 @@ void play_task() {
             pwm_init(audio_pin_slice, &config, true);
             pwm_set_gpio_level(AUDIO_OUT_PIN, 0);
         }
-
-        // if (xSemaphoreTake(xSemaphorePlayDone, pdMS_TO_TICKS(500)) == pdTRUE) {
-        //     pwm_set_enabled(audio_pin_slice, false);
-        // }
     }
 }
 
